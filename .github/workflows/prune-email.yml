@@ -2,9 +2,10 @@ name: email-prune
 
 on:
   schedule:
-    # Saturdays 06:00 UTC (07:00 CET / 08:00 CEST). GitHub cron is always UTC.
-    # Note: scheduled runs can start a few minutes (occasionally up to ~30) late.
-    - cron: "0 6 * * 6"
+    # Mondays 08:00 UTC = 09:00 CET (winter) / 10:00 CEST (summer).
+    # GitHub cron is always UTC and has no DST handling; pick 07:00 instead
+    # if you prefer 09:00 during summer. Runs may start a few minutes late.
+    - cron: "0 8 * * 1"
   workflow_dispatch:
     inputs:
       execute:

@@ -6,8 +6,9 @@ iCloud. No local machine needed.
 
 ## How it works
 
-- **Schedule**: Saturdays 06:00 UTC (edit the `cron` line in
-  `.github/workflows/prune-email.yml` to change it; GitHub cron is always UTC).
+- **Schedule**: Mondays 08:00 UTC — 09:00 CET in winter, 10:00 CEST in summer
+  (edit the `cron` line in `.github/workflows/prune-email.yml` to change it;
+  GitHub cron is always UTC).
 - **Safety**: scheduled runs pass `--execute` (real deletion). Manual runs
   default to a dry-run; tick the **execute** checkbox in the
   "Run workflow" dialog to delete for real.
