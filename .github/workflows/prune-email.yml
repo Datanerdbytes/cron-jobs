@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: email-prune
@@ -76,3 +77,20 @@ jobs:
             printf '### email-prune — providers: %s — mode: %s\n\n' "$PROVIDERS" "$EXECUTE"
             printf '```\n%s\n```\n' "$out"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open or update a failure issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="email-prune failed"
+          body="The email-prune run failed on $(date -u '+%Y-%m-%d %H:%M UTC').
+          Log: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          existing="$(gh issue list --repo "$GITHUB_REPOSITORY" \
+            --state open --search "$title in:title" \
+            --json number --jq '.[0].number' || true)"
+          if [[ -n "$existing" ]]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+          fi
