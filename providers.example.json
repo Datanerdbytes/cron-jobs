@@ -1,0 +1,19 @@
+{
+  "providers": [
+    {
+      "name": "gmail",
+      "user_env": "EP_GMAIL_USER",
+      "pass_env": "EP_GMAIL_PASS"
+    },
+    {
+      "name": "outlook",
+      "user_env": "EP_OUTLOOK_USER",
+      "pass_env": "EP_OUTLOOK_PASS"
+    },
+    {
+      "name": "icloud",
+      "user_env": "EP_ICLOUD_USER",
+      "pass_env": "EP_ICLOUD_PASS"
+    }
+  ]
+}

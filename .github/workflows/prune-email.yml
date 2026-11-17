@@ -1,0 +1,77 @@
+name: email-prune
+
+on:
+  schedule:
+    # Saturdays 06:00 UTC (07:00 CET / 08:00 CEST). GitHub cron is always UTC.
+    # Note: scheduled runs can start a few minutes (occasionally up to ~30) late.
+    - cron: "0 6 * * 6"
+  workflow_dispatch:
+    inputs:
+      execute:
+        description: "Actually delete messages (unchecked = dry run)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: email-prune
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Detect providers with credentials configured
+        id: detect
+        env:
+          EP_GMAIL_USER: ${{ secrets.EP_GMAIL_USER || '' }}
+          EP_OUTLOOK_USER: ${{ secrets.EP_OUTLOOK_USER || '' }}
+          EP_ICLOUD_USER: ${{ secrets.EP_ICLOUD_USER || '' }}
+        run: |
+          available=()
+          for entry in gmail:EP_GMAIL_USER outlook:EP_OUTLOOK_USER icloud:EP_ICLOUD_USER; do
+            name=${entry%%:*}
+            var=${entry#*:}
+            if [[ -n "${!var}" ]]; then
+              available+=("$name")
+            fi
+          done
+          if [[ ${#available[@]} -eq 0 ]]; then
+            echo "::error::No provider credentials found. Add repo secrets EP_GMAIL_USER/EP_GMAIL_PASS (and/or EP_OUTLOOK_*, EP_ICLOUD_*)."
+            exit 1
+          fi
+          printf 'providers=%s\n' "$(IFS=,; echo "${available[*]}")" >> "$GITHUB_OUTPUT"
+
+      - name: Prune spam & trash
+        env:
+          EP_GMAIL_USER: ${{ secrets.EP_GMAIL_USER || '' }}
+          EP_GMAIL_PASS: ${{ secrets.EP_GMAIL_PASS || '' }}
+          EP_OUTLOOK_USER: ${{ secrets.EP_OUTLOOK_USER || '' }}
+          EP_OUTLOOK_PASS: ${{ secrets.EP_OUTLOOK_PASS || '' }}
+          EP_ICLOUD_USER: ${{ secrets.EP_ICLOUD_USER || '' }}
+          EP_ICLOUD_PASS: ${{ secrets.EP_ICLOUD_PASS || '' }}
+          PROVIDERS: ${{ steps.detect.outputs.providers }}
+          # Scheduled runs always execute; manual runs only when the "execute"
+          # checkbox is ticked, otherwise a safe dry-run.
+          EXECUTE: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.execute) }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ "$EXECUTE" == "true" ]]; then
+            args+=(--execute)
+          fi
+          out="$(python3 prune_email.py "${args[@]}" --providers "$PROVIDERS")"
+          printf '%s\n' "$out"
+          {
+            printf '### email-prune — providers: %s — mode: %s\n\n' "$PROVIDERS" "$EXECUTE"
+            printf '```\n%s\n```\n' "$out"
+          } >> "$GITHUB_STEP_SUMMARY"
