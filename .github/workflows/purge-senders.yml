@@ -5,9 +5,7 @@ on:
   # Scheduled runs are best-effort and can be dropped; see README
   # "Reliability: external trigger" for the workflow_dispatch fallback.
   schedule:
-    # TEMP smoke test: single near-term slot to verify schedule delivery.
-    # Revert to "0 16 * * *" once the scheduled run is confirmed.
-    - cron: "06 02 * * *"
+    - cron: "0 16 * * *"
   workflow_dispatch:
     inputs:
       execute:
