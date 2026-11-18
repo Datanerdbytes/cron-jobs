@@ -1,101 +1,74 @@
-# cron-jobs — email cleanup on GitHub Actions
+# cron-jobs — local (launchd) email cleanup
 
-Two GitHub Actions crons, no local machine needed:
+Two launchd agents run the email automation on this Mac. GitHub Actions
+workflows are kept in the repo but **disabled** — its `schedule` trigger never
+fired for these workflows (verified 28h+ with a `*/5` test cron), so the live
+automation is local. Don't put this folder in `~/Documents`: macOS TCC blocks
+launchd from reading protected folders (hence `~/cron-jobs`).
 
-- **`purge-senders.yml`** — daily at **00:00 Asia/Manila** (16:00 UTC): moves
-  INBOX mail from the senders in `senders.example.json` (GitHub, CodeRabbit)
-  to Trash. Recoverable until the weekly prune.
-- **`prune-email.yml`** — Mondays 08:00 UTC (**16:00 Asia/Manila**): runs
-  `prune_email.py` to permanently delete everything in Spam/Junk and
-  Deleted Items/Trash for Gmail, Outlook.com and iCloud.
+| Agent | When (Asia/Manila) | What |
+|---|---|---|
+| `com.cronjobs.purge-senders` | Daily **00:00** | Moves INBOX mail from `senders.example.json` (GitHub, CodeRabbit) to Trash |
+| `com.cronjobs.email-prune` | **Mondays 09:00** | Permanently deletes everything in Spam and Trash |
 
-## How it works
+Pipeline: the daily purge keeps the inbox clean (recoverable in Trash for up to
+a week), the Monday prune empties Trash + Spam for good.
 
-- **Schedule**: purge daily at 16:00 UTC, prune Mondays 08:00 UTC. GitHub cron
-  is always UTC, so 16:00 UTC is midnight in Manila; edit the `cron` lines in
-  `.github/workflows/` to change the times.
-- **Safety**: scheduled runs pass `--execute` (real deletion). Manual runs
-  default to a dry-run; tick the **execute** checkbox in the
-  "Run workflow" dialog to delete for real.
-- **Credentials** live only in repo secrets — never in the code or config file.
-- Providers whose secrets aren't configured are skipped automatically, so you
-  can migrate one mailbox at a time.
+## Files
 
-## One-time setup
+- `purge_senders.py` / `prune_email.py` — the scripts (`--execute` deletes;
+  without it they only count)
+- `senders.example.json` — senders to sweep (edit to add domains)
+- `providers.example.json` — mailbox definitions; env var names for credentials
+- `.env.local` — **local credentials, gitignored, `chmod 600`**. Also defines
+  unused provider vars as empty strings so config loading passes
+- `run-purge-senders.sh` / `run-email-prune.sh` — wrappers invoked by launchd
+  (source `.env.local`, run with `--execute --providers gmail`)
+- `~/Library/LaunchAgents/com.cronjobs.*.plist` — the agents
+  (logs: `~/Library/Logs/cronjobs-*.log`)
 
-1. Create a private GitHub repo and push this folder:
-
-   ```bash
-   git init
-   git add .
-   git commit -m "email-prune cron via GitHub Actions"
-   git remote add origin git@github.com:<you>/<repo>.git
-   git push -u origin main
-   ```
-
-2. Add repo secrets (**Settings → Secrets and variables → Actions → New
-   repository secret**) for each provider you want to prune:
-
-   | Secret           | Value                                    |
-   |------------------|------------------------------------------|
-   | `EP_GMAIL_USER`  | `you@gmail.com`                          |
-   | `EP_GMAIL_PASS`  | Gmail **app password** (needs 2FA on)    |
-   | `EP_OUTLOOK_USER`| `you@outlook.com`                        |
-   | `EP_OUTLOOK_PASS`| Outlook app password                     |
-   | `EP_ICLOUD_USER` | `you@icloud.com`                         |
-   | `EP_ICLOUD_PASS` | iCloud app password (appleid.apple.com)  |
-
-   Only add the providers you actually use — the rest are skipped.
-
-3. Verify Actions is enabled (**Settings → Actions → General** → allow all
-   actions; on private repos, scheduled workflows are included).
-
-4. Go to **Actions → email-prune → Run workflow**, leave "execute" unticked,
-   and check the run output: it should show message counts (dry-run mode).
-
-5. Once the dry-run looks right, run it again with **execute** ticked, or just
-   wait for Monday.
-
-## Reliability: external trigger
-
-GitHub's cron scheduler is best-effort: scheduled runs can be delayed by
-minutes-to-hours or silently dropped, and private repos have had prolonged
-outages of `schedule` delivery. `workflow_dispatch` is not affected. To make
-the daily sweep dependable, have an external scheduler call the API:
+## Common operations
 
 ```bash
-curl -X POST \
-  -H "Authorization: Bearer $GH_PAT" \
-  -H "Accept: application/vnd.github+json" \
-  https://api.github.com/repos/Datanerdbytes/cron-jobs/actions/workflows/purge-senders.yml/dispatches \
-  -d '{"ref":"main","inputs":{"execute":"true"}}'
+# run now, exactly as launchd does
+launchctl kickstart gui/$(id -u)/com.cronjobs.purge-senders
+launchctl kickstart gui/$(id -u)/com.cronjobs.email-prune
+
+# stop / start an agent
+launchctl unload ~/Library/LaunchAgents/com.cronjobs.purge-senders.plist
+launchctl load   ~/Library/LaunchAgents/com.cronjobs.purge-senders.plist
+
+# check status (a "-" in the PID column means loaded and idle)
+launchctl list | grep cronjobs
+tail -5 ~/Library/Logs/cronjobs-purge-senders.log
 ```
 
-Use a fine-grained token limited to this repo with **Actions: Read and write**.
-Any scheduler that can send that header works (cron-job.org, Vercel cron,
-Render cron). Keep the `schedule:` trigger as a fallback.
+launchd catches up on missed runs: if the Mac is asleep at 00:00, the sweep
+runs when it next wakes.
 
-`inputs.execute` is required because manual dispatches default to a dry run.
-For the weekly permanent delete, use the same call against
-`prune-email.yml`.
+## Changing the schedule
 
-## Notes
+Edit `StartCalendarInterval` in the plist (local time, no UTC math needed),
+then unload/load the agent. `Weekday` is 1 = Monday; omit it for daily.
 
-- Scheduled workflows can start 5–30 minutes late; harmless for a weekly prune.
-- Private repos include 2,000 free Actions minutes/month; this job uses ~1 min
-  per run (Python stdlib only, no dependencies to install).
-- GitHub disables scheduled workflows after 60 days of repo inactivity — if
-  that happens, re-enable from the Actions tab. A no-op commit occasionally
-  keeps it alive.
-- IMAP logins from GitHub's IPs may occasionally trip a provider's rate
-  limiting; a weekly cadence makes that unlikely.
+## GitHub Actions (disabled, kept for reference)
 
-## Local run (unchanged)
+`.github/workflows/` holds equivalent workflows (`workflow_dispatch` works
+fine — `schedule` does not). Re-enable with:
 
 ```bash
-export EP_GMAIL_USER="you@gmail.com"
-export EP_GMAIL_PASS="abcd-efgh-ijkl-mnop"
-
-python3 prune_email.py                 # dry-run
-python3 prune_email.py --execute       # actually delete
+gh workflow enable purge-senders.yml --repo Datanerdbytes/cron-jobs
+gh workflow enable prune-email.yml  --repo Datanerdbytes/cron-jobs
 ```
+
+Repo secrets (`EP_GMAIL_USER`, `EP_GMAIL_PASS`, …) remain configured there.
+Manual dispatch defaults to a dry run; pass `-f execute=true` for real
+deletion. An external scheduler (cron-job.org etc.) can also dispatch via the
+API — see the workflow headers.
+
+## Adding another mailbox
+
+1. Add its `EP_*_USER` / `EP_*_PASS` exports to `.env.local`
+2. Append the provider name to the wrappers' `--providers` list (e.g.
+   `--providers gmail,icloud`)
+3. Add matching repo secrets if you also use the GitHub path
