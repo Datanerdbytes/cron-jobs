@@ -2,9 +2,12 @@ name: purge-senders
 
 on:
   schedule:
-    # Daily 23:00 UTC = midnight CET (winter) / 01:00 CEST (summer).
-    # GitHub cron is always UTC and has no DST handling.
-    - cron: "0 23 * * *"
+    - cron: "0 23 * * *" # daily sweep = midnight CET (winter) / 01:00 CEST (summer)
+    # TEMP-TEST: high-frequency schedule to verify GitHub's scheduler fires at
+    # all (daily cron produced zero schedule runs in 16+ hours). Runs in
+    # execute mode, which is safe: idempotent sender purge. Remove once
+    # schedule triggering is confirmed.
+    - cron: "*/5 * * * *"
   workflow_dispatch:
     inputs:
       execute:
