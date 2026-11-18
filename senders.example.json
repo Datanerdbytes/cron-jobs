@@ -1,6 +1,8 @@
 {
   "senders": [
     "github.com",
-    "coderabbit.ai"
+    "coderabbit.ai",
+    "jobstreet",
+    "google.com"
   ]
 }
