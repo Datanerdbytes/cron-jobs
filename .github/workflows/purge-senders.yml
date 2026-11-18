@@ -7,7 +7,7 @@ on:
   schedule:
     # TEMP smoke test: single near-term slot to verify schedule delivery.
     # Revert to "0 16 * * *" once the scheduled run is confirmed.
-    - cron: "54 01 * * *"
+    - cron: "06 02 * * *"
   workflow_dispatch:
     inputs:
       execute:
